@@ -578,7 +578,7 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 		switch (argv[i][1]) {
-		case 'b':
+		case 'j':
 			if (++i >= argc) {
 				fprintf(stderr, "expected parameter after -%c\n", 'b');
 				exit(1);
