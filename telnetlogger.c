@@ -62,6 +62,7 @@ struct ThreadArgs {
 	int fd;
 	FILE *fp_passwords;
 	FILE *fp_ips;
+	FILE *fp_json;
 	struct sockaddr_in6 peer;
 	socklen_t peerlen;
 	char peername[256];
@@ -207,6 +208,7 @@ matches(const char *rhs, const char *lhs, int len)
 		return 0;
 }
 
+
 /******************************************************************************
 * Print the results.
 ******************************************************************************/
@@ -224,6 +226,28 @@ print_passwords(FILE *fp, const char *login, int login_len, const char *password
 	fprintf(fp, " ");
 	print_string(fp, password, password_len);
 	fprintf(fp, "\n");
+	fflush(fp);
+	pthread_mutex_unlock(&output);
+}
+
+/******************************************************************************
+* Print the results.
+******************************************************************************/
+void print_json(FILE *fp, const char *login, int login_len, const char *password, int password_len, const char *hostname)
+{
+	if (matches("shell", login, login_len) && matches("sh", password, password_len))
+		return;
+	if (matches("enable", login, login_len) && matches("system", password, password_len))
+		return;
+
+	/* pretty print the two fields */
+	pthread_mutex_lock(&output);
+	//print_string(fp, login, login_len);
+	//fprintf(fp, " ");
+	//print_string(fp, password, password_len);
+	//fprintf(fp, "\n");
+	//fprintf(fp, "%s\n", hostname);
+	fprintf(fp, "{\"src\":\"%s\",\"username\":\"%s\",\"password\":\"%s\"}\n", hostname, login, password);
 	fflush(fp);
 	pthread_mutex_unlock(&output);
 }
@@ -454,7 +478,8 @@ again:
 	/* Print the resulting username/password combination */
 	print_passwords(args->fp_passwords, login, login_length, password, password_length);
 	print_ip(args->fp_ips, args->peername);
-
+	print_json(args->fp_json, login, login_length, password, password_length, args->peername);
+	
 	/* Print error and loop around to do it again */
 	if (state == 1)
 		state = 0;
@@ -481,7 +506,7 @@ error:
 /******************************************************************************
  ******************************************************************************/
 void
-daemon_thread(int port, FILE *fp_passwords, FILE *fp_ips)
+daemon_thread(int port, FILE *fp_passwords, FILE *fp_ips, FILE *fp_json)
 {
 
 	int fd;
@@ -508,6 +533,7 @@ daemon_thread(int port, FILE *fp_passwords, FILE *fp_ips)
 		args->fd = newfd;
 		args->fp_passwords = fp_passwords;
 		args->fp_ips = fp_ips;
+		args->fp_json = fp_json;
 		args->peerlen = sizeof(args->peer);
 		getpeername(args->fd, (struct sockaddr*)&args->peer, &args->peerlen);
 		getnameinfo((struct sockaddr*)&args->peer, args->peerlen, args->peername, sizeof(args->peername), NULL, 0, NI_NUMERICHOST| NI_NUMERICSERV);
@@ -529,6 +555,7 @@ main(int argc, char *argv[])
 {
 	FILE *fp_passwords = stdout;
 	FILE *fp_ips = stdout;
+	FILE *fp_json = stdout;
 	int i;
 	int port = 23;
 
@@ -551,6 +578,17 @@ main(int argc, char *argv[])
 			exit(1);
 		}
 		switch (argv[i][1]) {
+		case 'b':
+			if (++i >= argc) {
+				fprintf(stderr, "expected parameter after -%c\n", 'b');
+				exit(1);
+			}
+			fp_json = fopen(argv[i], "wt");
+			if (fp_json == NULL) {
+				perror(argv[i]);
+				exit(1);
+			}
+			break;
 		case 'p':
 			if (++i >= argc) {
 				fprintf(stderr, "expected parameter after -%c\n", 'p');
@@ -601,7 +639,7 @@ main(int argc, char *argv[])
 		}
 	}
 
-	daemon_thread(port, fp_passwords, fp_ips);
+	daemon_thread(port, fp_passwords, fp_ips, fp_json);
 
 	return 0;
 }
